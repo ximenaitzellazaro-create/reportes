@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Salva Ciudadana — Panel Municipal de Reportes Ciudadanos</title>
+<meta name="description" content="Panel municipal para gestionar reportes ciudadanos de alcantarillas tapadas y centros de acopio llenos, con mapa interactivo y seguimiento de estado.">
+<meta name="theme-color" content="#0a0f0a">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --bg:#0a0f0a;
+    --bg-soft:#10160f;
+    --panel:#131a12;
+    --panel-2:#161f14;
+    --border:#1f2a1d;
+    --text:#e8efe6;
+    --text-dim:#8fa085;
+    --accent:#5fe05f;
+    --accent-dim:#1f5c2c;
+    --alta:#f0524a;
+    --media:#f0c84a;
+    --baja:#4ac8f0;
+    --terminado:#4ac880;
+    --pendiente:#f0a020;
+    --radius:10px;
+    --radius-lg:16px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden;
+  }
+  .visually-hidden{
+    position:absolute;width:1px;height:1px;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;
+  }
+  a,button,input{font-family:inherit;}
+  button{cursor:pointer;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+  /* ─── HEADER ─────────────────────────────────── */
+  header{
+    height:60px;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 20px;
+    background:var(--bg-soft);
+    border-bottom:1px solid var(--border);
+    position:relative;z-index:10;
+  }
+  .logo{display:flex;align-items:center;gap:10px;}
+  .logo-icon{
+    width:32px;height:32px;border-radius:9px;
+    background:linear-gradient(135deg,var(--accent-dim),var(--accent));
+    display:flex;align-items:center;justify-content:center;font-size:17px;
+    box-shadow:0 0 14px rgba(95,224,95,.25);
+  }
+  .logo-text{font-size:19px;font-weight:700;letter-spacing:.2px;}
+  .logo-text span{color:var(--accent);}
+  .header-right{display:flex;align-items:center;gap:10px;}
+  .modo-badge{
+    font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;
+    padding:5px 10px;border-radius:20px;border:1px solid;
+  }
+  .modo-badge.lectura{color:var(--media);border-color:var(--media);background:rgba(240,200,74,.08);}
+  .modo-badge.escritura{color:var(--terminado);border-color:var(--terminado);background:rgba(74,200,128,.08);}
+  .badge{
+    font-size:11.5px;font-weight:700;letter-spacing:.6px;
+    padding:5px 10px;border-radius:6px;
+    background:#000;border:1px solid var(--accent-dim);color:var(--accent);
+  }
+  .header-right button{
+    background:transparent;color:var(--text);
+    border:1px solid var(--border);border-radius:8px;
+    padding:7px 13px;font-size:13.5px;font-weight:500;
+    transition:border-color .15s,background .15s;
+  }
+  .header-right button:hover{border-color:var(--accent-dim);background:var(--panel-2);}
+
+  /* ─── LAYOUT ─────────────────────────────────── */
+  .main{display:flex;height:calc(100vh - 60px);}
+  .sidebar{
+    width:380px;min-width:300px;
+    background:var(--bg-soft);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+  .sidebar-header{padding:18px 18px 12px;border-bottom:1px solid var(--border);}
+  .sidebar-title{font-size:12.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--text-dim);margin-bottom:10px;}
+  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
+  .stat{
+    background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+    padding:10px 6px;text-align:center;border-top:2.5px solid transparent;
+  }
+  .stat.alta{border-top-color:var(--alta);}
+  .stat.media{border-top-color:var(--media);}
+  .stat.baja{border-top-color:var(--baja);}
+  .stat-num{font-size:22px;font-weight:700;}
+  .stat.alta .stat-num{color:var(--alta);}
+  .stat.media .stat-num{color:var(--media);}
+  .stat.baja .stat-num{color:var(--baja);}
+  .stat-label{font-size:10.5px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+
+  .filtros{display:flex;flex-wrap:wrap;gap:6px;padding:0 18px 14px;border-bottom:1px solid var(--border);}
+  .filtro-btn{
+    background:var(--panel);border:1px solid var(--border);color:var(--text-dim);
+    border-radius:20px;padding:6px 12px;font-size:12.5px;font-weight:500;
+    transition:all .15s;
+  }
+  .filtro-btn:hover{border-color:var(--accent-dim);color:var(--text);}
+  .filtro-btn.active{background:var(--accent-dim);border-color:var(--accent);color:#eafff0;}
+
+  .lista-reportes{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+  .reporte-card{
+    background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--border);
+    border-radius:var(--radius);padding:12px 13px;cursor:pointer;
+    transition:border-color .15s,transform .1s;
+  }
+  .reporte-card:hover{border-color:#2a3a27;transform:translateY(-1px);}
+  .reporte-card.alta{border-left-color:var(--alta);}
+  .reporte-card.media{border-left-color:var(--media);}
+  .reporte-card.baja{border-left-color:var(--baja);}
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
+  .card-tipo{font-size:14px;font-weight:600;}
+  .card-prioridad{font-size:10.5px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:5px;white-space:nowrap;}
+  .card-prioridad.alta{background:rgba(240,82,74,.15);color:var(--alta);}
+  .card-prioridad.media{background:rgba(240,200,74,.15);color:var(--media);}
+  .card-prioridad.baja{background:rgba(74,200,240,.15);color:var(--baja);}
+  .card-desc{font-size:13px;color:var(--text-dim);line-height:1.4;margin-bottom:6px;}
+  .card-coords{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#5a6a55;margin-bottom:8px;}
+  .card-estado{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;margin-bottom:10px;}
+  .card-estado.nuevo{background:rgba(255,255,255,.07);color:#cfd8cc;}
+  .card-estado.pendiente{background:rgba(240,160,32,.13);color:var(--pendiente);}
+  .card-estado.terminado{background:rgba(74,200,128,.13);color:var(--terminado);}
+  .card-acciones{display:flex;gap:7px;}
+  .btn-accion{
+    flex:1;border:1px solid var(--border);background:var(--panel-2);color:var(--text);
+    border-radius:7px;padding:7px 8px;font-size:12px;font-weight:600;
+    transition:border-color .15s,opacity .15s;
+  }
+  .btn-iniciar:hover:not(:disabled){border-color:var(--pendiente);color:var(--pendiente);}
+  .btn-finalizar:hover:not(:disabled){border-color:var(--terminado);color:var(--terminado);}
+  .btn-accion:disabled{opacity:.35;cursor:not-allowed;}
+  .btn-accion.cargando{opacity:.6;cursor:wait;}
+
+  .empty-state{text-align:center;padding:50px 16px;color:var(--text-dim);}
+  .empty-state .icon{font-size:32px;margin-bottom:8px;}
+
+  /* ─── MAPA ───────────────────────────────────── */
+  #map{flex:1;background:#0a0f0a;}
+  .leaflet-popup-content-wrapper{background:#10160f;color:var(--text);border-radius:10px;}
+  .leaflet-popup-tip{background:#10160f;}
+  .popup-tipo{font-weight:700;font-size:14px;margin-bottom:6px;}
+  .popup-row{font-size:12.5px;color:var(--text-dim);margin-bottom:3px;}
+  .popup-prioridad,.popup-estado{font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;margin-right:6px;display:inline-block;}
+  .popup-estado.nuevo{background:rgba(255,255,255,.08);color:#cfd8cc;}
+  .popup-estado.pendiente{background:rgba(240,160,32,.15);color:var(--pendiente);}
+  .popup-estado.terminado{background:rgba(74,200,128,.15);color:var(--terminado);}
+
+  /* ─── TOAST ──────────────────────────────────── */
+  #toast{
+    position:fixed;bottom:24px;left:50%;
+    transform:translate(-50%,16px);
+    background:#10160f;border:1px solid var(--border);color:var(--text);
+    padding:11px 20px;border-radius:30px;font-size:13.5px;font-weight:500;
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:200;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+  #toast.ok{border-color:var(--terminado);}
+  #toast.error{border-color:var(--alta);}
+  #toast.info{border-color:var(--pendiente);}
+
+  /* ─── LOADING ────────────────────────────────── */
+  #loading{
+    position:fixed;inset:0;background:var(--bg);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    z-index:999;
+  }
+  .spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:3px solid var(--border);border-top-color:var(--accent);
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  #loading p{color:var(--text-dim);font-size:13.5px;}
+
+  /* ─── RESPONSIVE ─────────────────────────────── */
+  @media (max-width:880px){
+    .logo-text{font-size:16px;}
+    .badge{display:none;}
+    .header-right button{padding:6px 9px;font-size:12px;}
+    .main{flex-direction:column;height:auto;min-height:calc(100vh - 60px);}
+    .sidebar{width:100%;min-width:0;height:46vh;border-right:none;border-bottom:1px solid var(--border);}
+    #map{height:54vh;}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001s !important;transition-duration:.001s !important;}
+  }
+</style>
+</head>
+<body>
+
+<h1 class="visually-hidden">Salva Ciudadana — Panel municipal de reportes ciudadanos</h1>
+
+<iframe id="proxy-frame" title="Conexión con Apps Script" style="display:none" aria-hidden="true"></iframe>
+
+<div id="loading">
+  <div class="spinner" role="status" aria-label="Cargando"></div>
+  <p>Cargando reportes…</p>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon" aria-hidden="true">🌿</div>
+    <div class="logo-text">Salva <span>Ciudadana</span></div>
+  </div>
+  <div class="header-right">
+    <span class="badge">PANEL MUNICIPAL</span>
+    <button id="btn-actualizar" onclick="cargarDatos()">↻ Actualizar</button>
+  </div>
+</header>
+
+<main class="main">
+  <nav class="sidebar" aria-label="Resumen y lista de reportes">
+    <div class="sidebar-header">
+      <div class="sidebar-title">Resumen</div>
+      <div class="stats">
+        <div class="stat alta"><div class="stat-num" id="cnt-alta">0</div><div class="stat-label">Alta</div></div>
+        <div class="stat media"><div class="stat-num" id="cnt-media">0</div><div class="stat-label">Media</div></div>
+        <div class="stat baja"><div class="stat-num" id="cnt-baja">0</div><div class="stat-label">Baja</div></div>
+      </div>
+    </div>
+    <div class="filtros">
+      <button class="filtro-btn active" onclick="filtrar('todos', this)">Todos</button>
+      <button class="filtro-btn" onclick="filtrar('Alcantarilla tapada', this)">Alcantarilla</button>
+      <button class="filtro-btn" onclick="filtrar('Centro de acopio lleno', this)">Acopio</button>
+      <button class="filtro-btn" onclick="filtrar('Alta', this)">🔴 Alta</button>
+      <button class="filtro-btn" onclick="filtrar('pendiente', this)">🟡 Pendiente</button>
+      <button class="filtro-btn" onclick="filtrar('terminado', this)">🟢 Terminado</button>
+    </div>
+    <div class="lista-reportes" id="lista"></div>
+  </nav>
+  <div id="map" role="region" aria-label="Mapa de reportes"></div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  /* ─── CONFIGURACIÓN FIJA DEL PROYECTO ──
+     Estos valores quedan fijos en el código.
+     No hay panel de configuración: si necesitas
+     cambiarlos en el futuro, edítalos aquí mismo. */
+  const SHEET_ID = '1FMiW2WD9A-FAEGZLAKBELVWgn2yLi_Oqr3dsmINrMXk';
+  const URL_CSV  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Hoja 1`;
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdPjmEy_bu4f7FVraganfWl9-u_Ut9e1pSXZNl71MjnL7T0sre6IJ67iBG8qzcGw8w/exec';
+  const COL_ESTADO = 'estado';
+  const COL_ID     = 'id';
+
+  let mapa, reportes = [], markers = [], filtroActual = 'todos';
+
+  let iframeCallId = 0;
+
+  /* ─── IFRAME PROXY ───────────────────────────────
+     Apps Script no permite fetch directo por CORS.
+     Cargamos la URL en un iframe oculto: el script SÍ
+     se ejecuta y escribe en el Sheet, aunque no podamos
+     leer la respuesta (cross-origin).
+  ────────────────────────────────────────────────── */
+  function llamarScriptViaIframe(url) {
+    return new Promise((resolve, reject) => {
+      const frame = document.getElementById('proxy-frame');
+      ++iframeCallId;
+
+      const timer = setTimeout(() => {
+        frame.onload = null;
+        frame.onerror = null;
+        reject(new Error('Tiempo de espera agotado'));
+      }, 10000);
+
+      frame.onload = () => {
+        clearTimeout(timer);
+        frame.onload = null;
+        frame.onerror = null;
+        resolve({ success: true });
+      };
+
+      frame.onerror = () => {
+        clearTimeout(timer);
+        frame.onload = null;
+        frame.onerror = null;
+        reject(new Error('Error de red'));
+      };
+
+      frame.src = url;
+    });
+  }
+
+  /* ─── MAPA ─────────────────────────────────────── */
+  mapa = L.map('map', { zoomControl: false }).setView([20.5, -100.5], 10);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+  }).addTo(mapa);
+  L.control.zoom({ position: 'bottomright' }).addTo(mapa);
+
+  /* ─── HELPERS ───────────────────────────────────── */
+  function getPrioridad(p) {
+    if (!p) return 'baja';
+    p = p.toLowerCase();
+    if (p.includes('alta')) return 'alta';
+    if (p.includes('media')) return 'media';
+    return 'baja';
+  }
+
+  function getEstado(e) {
+    if (!e) return 'nuevo';
+    e = e.toLowerCase().trim();
+    if (e.includes('terminado') || e.includes('completado') || e.includes('finalizado')) return 'terminado';
+    if (e.includes('pendiente') || e.includes('iniciado') || e.includes('proceso')) return 'pendiente';
+    return 'nuevo';
+  }
+
+  function getEstadoLabel(e) {
+    const s = getEstado(e);
+    if (s === 'terminado') return '✓ Terminado';
+    if (s === 'pendiente') return '⏳ Pendiente';
+    return '● Nuevo';
+  }
+
+  function getColor(p) {
+    if (p === 'alta') return '#f0524a';
+    if (p === 'media') return '#f0c84a';
+    return '#4ac8f0';
+  }
+
+  function crearIcono(prioridad, estado) {
+    const color = getColor(prioridad);
+    const ring  = getEstado(estado) === 'terminado' ? '#4ac880' : getEstado(estado) === 'pendiente' ? '#f0a020' : 'white';
+    return L.divIcon({
+      html: `<div style="width:14px;height:14px;background:${color};border:2px solid ${ring};border-radius:50%;box-shadow:0 0 8px ${color}88;"></div>`,
+      className: '', iconSize: [14, 14], iconAnchor: [7, 7]
+    });
+  }
+
+  /* ─── TOAST ─────────────────────────────────────── */
+  let toastTimer;
+  function mostrarToast(msg, tipo = 'ok') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `show ${tipo}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  /* ─── CSV PARSER ────────────────────────────────── */
+  function parsearCSV(texto) {
+    const lineas = texto.trim().split('\n');
+    const encabezados = lineas[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+    return lineas.slice(1).map((linea, rowIndex) => {
+      const vals = [];
+      let dentro = false, campo = '';
+      for (let c of linea) {
+        if (c === '"') { dentro = !dentro; continue; }
+        if (c === ',' && !dentro) { vals.push(campo); campo = ''; continue; }
+        campo += c;
+      }
+      vals.push(campo);
+      const obj = { _rowIndex: rowIndex + 2 };
+      encabezados.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
+      return obj;
+    });
+  }
+
+  /* ─── ACTUALIZAR ESTADO ─────────────────────────── */
+  async function actualizarEstado(reporte, nuevoEstado, btnI, btnF) {
+    btnI.classList.add('cargando'); btnF.classList.add('cargando');
+    btnI.textContent = '...'; btnF.textContent = '...';
+
+    try {
+      const rowId = COL_ID !== 'id' && reporte[COL_ID] ? reporte[COL_ID] : reporte._rowIndex;
+      const params = new URLSearchParams({
+        action:    'updateEstado',
+        rowId:     rowId,
+        colId:     COL_ID,
+        colEstado: COL_ESTADO,
+        estado:    nuevoEstado
+      });
+
+      const url = `${SCRIPT_URL}?${params.toString()}`;
+      await llamarScriptViaIframe(url);
+
+      reporte[COL_ESTADO] = nuevoEstado;
+      mostrarToast(
+        nuevoEstado === 'Pendiente' ? '⏳ Marcado como Pendiente' : '✅ Marcado como Terminado',
+        nuevoEstado === 'Pendiente' ? 'info' : 'ok'
+      );
+      renderLista(reportesFiltrados());
+      renderMapa(reportesFiltrados());
+
+    } catch (err) {
+      mostrarToast(`❌ ${err.message}`, 'error');
+    } finally {
+      btnI.classList.remove('cargando');
+      btnF.classList.remove('cargando');
+    }
+  }
+
+  /* ─── ELIMINAR REPORTE (al finalizar) ───────────── */
+  async function eliminarReporte(reporte, btnI, btnF) {
+    btnI.classList.add('cargando'); btnF.classList.add('cargando');
+    btnI.textContent = '...'; btnF.textContent = '...';
+
+    try {
+      const idReporte = reporte.id || reporte._rowIndex;
+      const params = new URLSearchParams({
+        action: 'deleteReporte',
+        id:     idReporte
+      });
+
+      const url = `${SCRIPT_URL}?${params.toString()}`;
+      await llamarScriptViaIframe(url);
+
+      mostrarToast('✅ Reporte completado y eliminado', 'ok');
+
+      // Esperamos un instante a que el Sheet termine de borrar la fila,
+      // y recargamos todo desde cero para que las posiciones de fila
+      // de los demás reportes queden correctas.
+      setTimeout(cargarDatos, 900);
+
+    } catch (err) {
+      mostrarToast(`❌ ${err.message}`, 'error');
+      btnI.classList.remove('cargando');
+      btnF.classList.remove('cargando');
+      btnI.textContent = '▶ Iniciar';
+      btnF.textContent = '✓ Finalizar';
+    }
+  }
+
+  /* ─── FILTROS ───────────────────────────────────── */
+  function reportesFiltrados() {
+    // Los terminados nunca se mezclan con el resto: solo se ven
+    // cuando el filtro activo es exactamente "terminado".
+    if (filtroActual === 'terminado') {
+      return reportes.filter(r => getEstado(r[COL_ESTADO]) === 'terminado');
+    }
+    const activos = reportes.filter(r => getEstado(r[COL_ESTADO]) !== 'terminado');
+    if (filtroActual === 'todos') return activos;
+    return activos.filter(r =>
+      r.tipo?.toLowerCase().includes(filtroActual.toLowerCase()) ||
+      r.prioridad?.toLowerCase().includes(filtroActual.toLowerCase()) ||
+      getEstado(r[COL_ESTADO]).includes(filtroActual.toLowerCase())
+    );
+  }
+
+  function filtrar(tipo, btn) {
+    filtroActual = tipo;
+    document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderLista(reportesFiltrados());
+    renderMapa(reportesFiltrados());
+  }
+
+  /* ─── RENDER LISTA ──────────────────────────────── */
+  function renderLista(datos) {
+    const lista = document.getElementById('lista');
+    if (!datos.length) {
+      lista.innerHTML = `<div class="empty-state"><div class="icon">📍</div><p>No hay reportes</p></div>`;
+      return;
+    }
+    lista.innerHTML = '';
+    datos.forEach(r => {
+      const p   = getPrioridad(r.prioridad);
+      const est = getEstado(r[COL_ESTADO]);
+      const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
+      const ok  = !isNaN(lat) && !isNaN(lng);
+
+      const card = document.createElement('div');
+      card.className = `reporte-card ${p}`;
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-tipo">${r.tipo || 'Sin tipo'}</div>
+          <span class="card-prioridad ${p}">${r.prioridad || 'Baja'}</span>
+        </div>
+        <div class="card-desc">${r.descripcion || 'Sin descripción'}</div>
+        ${ok ? `<div class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>` : ''}
+        <span class="card-estado ${est}">${getEstadoLabel(r[COL_ESTADO])}</span>
+        <div class="card-acciones">
+          <button class="btn-accion btn-iniciar" ${est === 'pendiente' || est === 'terminado' ? 'disabled' : ''}>▶ Iniciar</button>
+          <button class="btn-accion btn-finalizar" ${est === 'terminado' ? 'disabled' : ''}>✓ Finalizar</button>
+        </div>`;
+
+      card.addEventListener('click', e => {
+        if (e.target.classList.contains('btn-accion')) return;
+        if (ok) { const idx = reportes.indexOf(r); mapa.setView([lat, lng], 16); markers[idx]?.openPopup(); }
+      });
+
+      const btnI = card.querySelector('.btn-iniciar');
+      const btnF = card.querySelector('.btn-finalizar');
+      btnI.addEventListener('click', e => { e.stopPropagation(); actualizarEstado(r, 'Pendiente', btnI, btnF); });
+      btnF.addEventListener('click', e => { e.stopPropagation(); eliminarReporte(r, btnI, btnF); });
+
+      lista.appendChild(card);
+    });
+  }
+
+  /* ─── RENDER MAPA ───────────────────────────────── */
+  function renderMapa(datos) {
+    markers.forEach(m => m && mapa.removeLayer(m));
+    markers = [];
+    const bounds = [];
+    reportes.forEach(r => {
+      const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
+      if (isNaN(lat) || isNaN(lng)) { markers.push(null); return; }
+      const p = getPrioridad(r.prioridad);
+      const marker = L.marker([lat, lng], { icon: crearIcono(p, r[COL_ESTADO]) });
+      marker.bindPopup(`
+        <div class="popup-tipo">${r.tipo || 'Sin tipo'}</div>
+        <div class="popup-row"><strong>Descripción:</strong> ${r.descripcion || '—'}</div>
+        <div class="popup-row"><strong>Coords:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+        <div style="margin-top:8px;">
+          <span class="popup-prioridad ${p}" style="background:${getColor(p)}22;color:${getColor(p)}">${r.prioridad || 'Baja'}</span>
+          <span class="popup-estado ${getEstado(r[COL_ESTADO])}">${getEstadoLabel(r[COL_ESTADO])}</span>
+        </div>`);
+      if (datos.includes(r)) { marker.addTo(mapa); bounds.push([lat, lng]); }
+      markers.push(marker);
+    });
+    if (bounds.length) mapa.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  /* ─── STATS ─────────────────────────────────────── */
+  function actualizarStats(datos) {
+    document.getElementById('cnt-alta').textContent  = datos.filter(r => getPrioridad(r.prioridad) === 'alta').length;
+    document.getElementById('cnt-media').textContent = datos.filter(r => getPrioridad(r.prioridad) === 'media').length;
+    document.getElementById('cnt-baja').textContent  = datos.filter(r => getPrioridad(r.prioridad) === 'baja').length;
+  }
+
+  /* ─── CARGAR DATOS ──────────────────────────────── */
+  async function cargarDatos() {
+    try {
+      document.getElementById('btn-actualizar').textContent = '↻ Cargando...';
+      const res   = await fetch(URL_CSV);
+      const texto = await res.text();
+      reportes = parsearCSV(texto).filter(r => r.tipo || r.descripcion);
+      // Más nuevos primero: las filas nuevas siempre se agregan al final
+      // del Sheet, así que ordenar por posición de fila es más confiable
+      // que parsear el id.
+      reportes.sort((a, b) => b._rowIndex - a._rowIndex);
+      actualizarStats(reportes.filter(r => getEstado(r[COL_ESTADO]) !== 'terminado'));
+      renderLista(reportesFiltrados());
+      renderMapa(reportesFiltrados());
+    } catch (e) {
+      document.getElementById('lista').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>Error al cargar datos. Revisa que el Sheet esté compartido como público de lectura.</p></div>`;
+    } finally {
+      document.getElementById('btn-actualizar').textContent = '↻ Actualizar';
+      const ld = document.getElementById('loading');
+      if (ld) ld.style.display = 'none';
+    }
+  }
+
+  setTimeout(() => { const ld = document.getElementById('loading'); if (ld) ld.style.display = 'none'; }, 5000);
+
+  cargarDatos();
+</script>
+</body>
+</html>
