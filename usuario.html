@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Salva Ciudadana — Consulta de Reportes</title>
+<meta name="description" content="Consulta pública del estado de los reportes ciudadanos: nuevos, en proceso y terminados.">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --bg:#f6f8fb;
+    --panel:#ffffff;
+    --border:#e2e8f0;
+    --text:#1a2332;
+    --text-dim:#6b7686;
+    --primary:#2f6fed;
+    --primary-dim:#e7eefd;
+    --alta:#e0473e;
+    --media:#e0a020;
+    --baja:#2f9e6e;
+    --nuevo:#94a3b8;
+    --pendiente:#e0a020;
+    --terminado:#2f9e6e;
+    --radius:16px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow:hidden;
+  }
+  .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+  :focus-visible{outline:3px solid var(--primary);outline-offset:2px;}
+
+  /* ─── HEADER ─────────────────────────────────── */
+  header{
+    padding:18px 26px;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  }
+  .logo{display:flex;align-items:center;gap:12px;}
+  .logo-icon{
+    width:40px;height:40px;border-radius:12px;background:var(--primary-dim);
+    display:flex;align-items:center;justify-content:center;font-size:19px;
+  }
+  .logo-text{font-size:19px;font-weight:800;}
+  .logo-text span{color:var(--primary);}
+  .subtitle{font-size:12.5px;color:var(--text-dim);margin-top:1px;}
+  .header-right button{
+    background:var(--primary);color:#fff;border:none;border-radius:10px;
+    padding:9px 16px;font-size:13.5px;font-weight:700;
+  }
+  .header-right button:hover{background:#2559c4;}
+
+  /* ─── STATS BAR ──────────────────────────────── */
+  .stats-bar{
+    display:flex;gap:10px;padding:14px 26px;background:var(--panel);
+    border-bottom:1px solid var(--border);overflow-x:auto;
+  }
+  .stat-chip{
+    flex:1;min-width:110px;background:var(--bg);border:1px solid var(--border);
+    border-radius:var(--radius);padding:10px 14px;display:flex;align-items:center;gap:10px;
+  }
+  .stat-dot{width:10px;height:10px;border-radius:50%;flex:none;}
+  .stat-dot.nuevo{background:var(--nuevo);}
+  .stat-dot.pendiente{background:var(--pendiente);}
+  .stat-dot.terminado{background:var(--terminado);}
+  .stat-dot.total{background:var(--primary);}
+  .stat-num{font-size:18px;font-weight:800;line-height:1;}
+  .stat-label{font-size:11px;color:var(--text-dim);font-weight:600;}
+
+  /* ─── LAYOUT ─────────────────────────────────── */
+  .main{display:flex;height:calc(100vh - 132px);}
+  .sidebar{width:420px;min-width:320px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+  .filtros{display:flex;flex-wrap:wrap;gap:7px;padding:14px 18px;border-bottom:1px solid var(--border);}
+  .filtro-btn{background:var(--bg);border:1px solid var(--border);color:var(--text-dim);border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:600;transition:all .15s;}
+  .filtro-btn:hover{border-color:var(--primary);color:var(--text);}
+  .filtro-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+
+  .lista{flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px;}
+  .reporte-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:box-shadow .15s,border-color .15s;}
+  .reporte-card:hover{border-color:var(--primary);box-shadow:0 4px 14px rgba(47,111,237,.10);}
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
+  .card-tipo{font-size:14.5px;font-weight:700;}
+  .card-prioridad{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap;}
+  .card-prioridad.alta{background:#fdebe9;color:var(--alta);}
+  .card-prioridad.media{background:#fdf3dc;color:var(--media);}
+  .card-prioridad.baja{background:#e3f6ec;color:var(--baja);}
+  .card-desc{font-size:13px;color:var(--text-dim);line-height:1.45;margin-bottom:10px;}
+  .card-coords{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9aa5b4;margin-bottom:12px;}
+
+  /* ─── STEPPER DE ESTADO ──────────────────────── */
+  .stepper{display:flex;align-items:center;gap:0;margin-top:2px;}
+  .step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative;}
+  .step-dot{width:18px;height:18px;border-radius:50%;background:var(--border);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;z-index:1;}
+  .step-label{font-size:9.5px;color:var(--text-dim);font-weight:700;margin-top:5px;text-transform:uppercase;letter-spacing:.3px;}
+  .step-line{position:absolute;top:9px;left:50%;width:100%;height:2px;background:var(--border);z-index:0;}
+  .step:last-child .step-line{display:none;}
+  .step.done .step-dot{background:var(--terminado);border-color:var(--terminado);}
+  .step.done .step-line{background:var(--terminado);}
+  .step.current .step-dot{background:var(--pendiente);border-color:var(--pendiente);box-shadow:0 0 0 4px rgba(224,160,32,.18);}
+  .step.current .step-label{color:var(--pendiente);}
+  .step.done .step-label{color:var(--terminado);}
+
+  .empty-state{text-align:center;padding:60px 16px;color:var(--text-dim);}
+  .empty-state .icon{font-size:32px;margin-bottom:8px;}
+
+  /* ─── MAPA ───────────────────────────────────── */
+  #map{flex:1;}
+  .leaflet-popup-content-wrapper{border-radius:14px;}
+  .popup-tipo{font-weight:800;font-size:14px;margin-bottom:6px;}
+  .popup-row{font-size:12.5px;color:var(--text-dim);margin-bottom:3px;}
+  .popup-tag{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-right:6px;display:inline-block;}
+
+  #toast{
+    position:fixed;bottom:24px;left:50%;transform:translate(-50%,16px);
+    background:var(--text);color:#fff;padding:11px 20px;border-radius:30px;
+    font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;
+    transition:opacity .2s,transform .2s;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:200;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+
+  #loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:999;}
+  .spinner{width:32px;height:32px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--primary);animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  #loading p{color:var(--text-dim);font-size:13.5px;}
+
+  @media (max-width:880px){
+    .main{flex-direction:column;height:auto;min-height:calc(100vh - 132px);}
+    .sidebar{width:100%;min-width:0;height:48vh;border-right:none;border-bottom:1px solid var(--border);}
+    #map{height:48vh;}
+    .stats-bar{padding:12px 16px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.001s !important;transition-duration:.001s !important;}}
+</style>
+</head>
+<body>
+
+<h1 class="visually-hidden">Salva Ciudadana — Consulta pública de reportes</h1>
+
+<div id="loading"><div class="spinner" role="status" aria-label="Cargando"></div><p>Cargando reportes…</p></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon" aria-hidden="true">📋</div>
+    <div>
+      <div class="logo-text">Salva <span>Ciudadana</span></div>
+      <div class="subtitle">Consulta el estado de los reportes registrados</div>
+    </div>
+  </div>
+  <div class="header-right"><button onclick="cargarDatos()">↻ Actualizar</button></div>
+</header>
+
+<div class="stats-bar">
+  <div class="stat-chip"><div class="stat-dot total"></div><div><div class="stat-num" id="cnt-total">0</div><div class="stat-label">Total</div></div></div>
+  <div class="stat-chip"><div class="stat-dot nuevo"></div><div><div class="stat-num" id="cnt-nuevo">0</div><div class="stat-label">Sin iniciar</div></div></div>
+  <div class="stat-chip"><div class="stat-dot pendiente"></div><div><div class="stat-num" id="cnt-pendiente">0</div><div class="stat-label">En proceso</div></div></div>
+  <div class="stat-chip"><div class="stat-dot terminado"></div><div><div class="stat-num" id="cnt-terminado">0</div><div class="stat-label">Terminados</div></div></div>
+</div>
+
+<main class="main">
+  <nav class="sidebar" aria-label="Lista de reportes">
+    <div class="filtros">
+      <button class="filtro-btn active" onclick="filtrar('todos', this)">Todos</button>
+      <button class="filtro-btn" onclick="filtrar('nuevo', this)">⚪ Sin iniciar</button>
+      <button class="filtro-btn" onclick="filtrar('pendiente', this)">🟡 En proceso</button>
+      <button class="filtro-btn" onclick="filtrar('terminado', this)">🟢 Terminados</button>
+    </div>
+    <div class="lista" id="lista"></div>
+  </nav>
+  <div id="map" role="region" aria-label="Mapa de reportes"></div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  /* Página de SOLO LECTURA: ningún botón escribe en el Sheet.
+     Solo se lee el CSV público — no se usa el Apps Script ni el iframe proxy. */
+  const SHEET_ID = '1rbQ6Q_hmP3Vxxv7EKD5E3_vn6DjTSDuL1DjNPMLtVcM';
+  const URL_CSV  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
+  const COL_ESTADO = 'estado';
+
+  let mapa, reportes = [], markers = [], filtroActual = 'todos';
+
+  mapa = L.map('map', { zoomControl: false }).setView([20.5, -100.5], 10);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+  }).addTo(mapa);
+  L.control.zoom({ position: 'bottomright' }).addTo(mapa);
+
+  function getPrioridad(p) {
+    if (!p) return 'baja';
+    p = p.toLowerCase();
+    if (p.includes('alta')) return 'alta';
+    if (p.includes('media')) return 'media';
+    return 'baja';
+  }
+
+  function getEstado(e) {
+    if (!e) return 'nuevo';
+    e = e.toLowerCase().trim();
+    if (e.includes('terminado') || e.includes('completado') || e.includes('finalizado')) return 'terminado';
+    if (e.includes('pendiente') || e.includes('iniciado') || e.includes('proceso')) return 'pendiente';
+    return 'nuevo';
+  }
+
+  function getColor(p) {
+    if (p === 'alta') return '#e0473e';
+    if (p === 'media') return '#e0a020';
+    return '#2f9e6e';
+  }
+
+  function crearIcono(estado) {
+    const colores = { nuevo:'#94a3b8', pendiente:'#e0a020', terminado:'#2f9e6e' };
+    const color = colores[estado] || '#94a3b8';
+    return L.divIcon({
+      html: `<div style="width:15px;height:15px;background:${color};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3);"></div>`,
+      className: '', iconSize: [15, 15], iconAnchor: [8, 8]
+    });
+  }
+
+  function renderStepper(estado) {
+    const pasos = [
+      { key:'nuevo',      label:'Recibido' },
+      { key:'pendiente',  label:'En proceso' },
+      { key:'terminado',  label:'Terminado' }
+    ];
+    const orden = { nuevo:0, pendiente:1, terminado:2 };
+    const actual = orden[estado] ?? 0;
+    return `<div class="stepper">${pasos.map((p, i) => {
+      let cls = '';
+      if (i < actual) cls = 'done';
+      else if (i === actual) cls = 'current';
+      const icon = i < actual ? '✓' : '';
+      return `<div class="step ${cls}">
+        <div class="step-line"></div>
+        <div class="step-dot">${icon}</div>
+        <div class="step-label">${p.label}</div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
+  let toastTimer;
+  function mostrarToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = 'show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function parsearCSV(texto) {
+    const lineas = texto.trim().split('\n');
+    const encabezados = lineas[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+    return lineas.slice(1).map((linea, rowIndex) => {
+      const vals = [];
+      let dentro = false, campo = '';
+      for (let c of linea) {
+        if (c === '"') { dentro = !dentro; continue; }
+        if (c === ',' && !dentro) { vals.push(campo); campo = ''; continue; }
+        campo += c;
+      }
+      vals.push(campo);
+      const obj = { _rowIndex: rowIndex + 2 };
+      encabezados.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
+      return obj;
+    });
+  }
+
+  function reportesFiltrados() {
+    if (filtroActual === 'todos') return reportes;
+    return reportes.filter(r => getEstado(r[COL_ESTADO]) === filtroActual);
+  }
+
+  function filtrar(tipo, btn) {
+    filtroActual = tipo;
+    document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderLista(reportesFiltrados());
+    renderMapa(reportesFiltrados());
+  }
+
+  function renderLista(datos) {
+    const lista = document.getElementById('lista');
+    if (!datos.length) {
+      lista.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No hay reportes en esta categoría</p></div>`;
+      return;
+    }
+    lista.innerHTML = '';
+    datos.forEach(r => {
+      const p = getPrioridad(r.prioridad);
+      const est = getEstado(r[COL_ESTADO]);
+      const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
+      const ok = !isNaN(lat) && !isNaN(lng);
+
+      const card = document.createElement('div');
+      card.className = 'reporte-card';
+      card.innerHTML = `
+        <div class="card-top">
+          <div class="card-tipo">${r.tipo || 'Sin tipo'}</div>
+          <span class="card-prioridad ${p}">${r.prioridad || 'Baja'}</span>
+        </div>
+        <div class="card-desc">${r.descripcion || 'Sin descripción'}</div>
+        ${ok ? `<div class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>` : ''}
+        ${renderStepper(est)}
+      `;
+      card.addEventListener('click', () => {
+        if (ok) { const idx = reportes.indexOf(r); mapa.setView([lat, lng], 16); markers[idx]?.openPopup(); }
+        else mostrarToast('Este reporte no tiene coordenadas registradas');
+      });
+      lista.appendChild(card);
+    });
+  }
+
+  function renderMapa(datos) {
+    markers.forEach(m => m && mapa.removeLayer(m));
+    markers = [];
+    const bounds = [];
+    reportes.forEach(r => {
+      const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
+      if (isNaN(lat) || isNaN(lng)) { markers.push(null); return; }
+      const p = getPrioridad(r.prioridad);
+      const est = getEstado(r[COL_ESTADO]);
+      const marker = L.marker([lat, lng], { icon: crearIcono(est) });
+      const etiquetas = { nuevo:'Sin iniciar', pendiente:'En proceso', terminado:'Terminado' };
+      marker.bindPopup(`
+        <div class="popup-tipo">${r.tipo || 'Sin tipo'}</div>
+        <div class="popup-row"><strong>Descripción:</strong> ${r.descripcion || '—'}</div>
+        <div class="popup-row"><strong>Coords:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+        <div style="margin-top:8px;">
+          <span class="popup-tag" style="background:${getColor(p)}1f;color:${getColor(p)}">${r.prioridad || 'Baja'}</span>
+          <span class="popup-tag" style="background:#eef2f7;color:#475569">${etiquetas[est]}</span>
+        </div>`);
+      if (datos.includes(r)) { marker.addTo(mapa); bounds.push([lat, lng]); }
+      markers.push(marker);
+    });
+    if (bounds.length) mapa.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  function actualizarStats() {
+    document.getElementById('cnt-total').textContent      = reportes.length;
+    document.getElementById('cnt-nuevo').textContent      = reportes.filter(r => getEstado(r[COL_ESTADO]) === 'nuevo').length;
+    document.getElementById('cnt-pendiente').textContent  = reportes.filter(r => getEstado(r[COL_ESTADO]) === 'pendiente').length;
+    document.getElementById('cnt-terminado').textContent  = reportes.filter(r => getEstado(r[COL_ESTADO]) === 'terminado').length;
+  }
+
+  async function cargarDatos() {
+    try {
+      const res = await fetch(URL_CSV);
+      const texto = await res.text();
+      reportes = parsearCSV(texto).filter(r => r.tipo || r.descripcion);
+      reportes.sort((a, b) => b._rowIndex - a._rowIndex);
+      actualizarStats();
+      renderLista(reportesFiltrados());
+      renderMapa(reportesFiltrados());
+    } catch (e) {
+      document.getElementById('lista').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>No se pudo cargar la información. Intenta más tarde.</p></div>`;
+    } finally {
+      const ld = document.getElementById('loading');
+      if (ld) ld.style.display = 'none';
+    }
+  }
+
+  setTimeout(() => { const ld = document.getElementById('loading'); if (ld) ld.style.display = 'none'; }, 5000);
+  cargarDatos();
+</script>
+</body>
+</html>
