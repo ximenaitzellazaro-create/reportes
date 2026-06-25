@@ -162,8 +162,8 @@
     .stat-chip{min-width:0;}
     .main{display:flex;flex-direction:column;height:auto;}
     #map{
-      order:-1;position:sticky;top:0;z-index:5;
-      width:100%;height:280px;
+      order:-1;
+      width:100%;height:320px;
       border-bottom:3px solid var(--primary);
       box-shadow:0 6px 14px rgba(0,0,0,.12);
     }
@@ -182,7 +182,7 @@
     .stats-bar{grid-template-columns:1fr 1fr;}
     .logo-text{font-size:17px;}
     .subtitle{font-size:11.5px;}
-    #map{height:240px;}
+    #map{height:260px;}
   }
   @media (prefers-reduced-motion:reduce){*{animation-duration:.001s !important;transition-duration:.001s !important;}}
 </style>
@@ -427,6 +427,7 @@
       actualizarStats();
       renderLista(reportesFiltrados());
       renderMapa(reportesFiltrados());
+      setTimeout(() => { if (mapa) mapa.invalidateSize(); }, 100);
     } catch (e) {
       document.getElementById('lista').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>No se pudo cargar la información. Intenta más tarde.</p></div>`;
     } finally {
@@ -436,6 +437,15 @@
   }
 
   setTimeout(() => { const ld = document.getElementById('loading'); if (ld) ld.style.display = 'none'; }, 5000);
+
+  /* Leaflet necesita que se le diga explícitamente cuando su contenedor
+     cambia de tamaño u orden (ej. al reordenar con CSS en mobile),
+     si no, el mapa puede quedar con tamaño 0 y no pintarse. */
+  function refrescarMapa() { if (mapa) mapa.invalidateSize(); }
+  window.addEventListener('load', () => setTimeout(refrescarMapa, 150));
+  window.addEventListener('resize', refrescarMapa);
+  window.addEventListener('orientationchange', () => setTimeout(refrescarMapa, 200));
+
   cargarDatos();
 </script>
 </body>
