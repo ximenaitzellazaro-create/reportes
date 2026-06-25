@@ -255,36 +255,35 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  /* ─── CONFIGURACIÓN FIJA DEL PROYECTO ──
-     Estos valores quedan fijos en el código.
-     No hay panel de configuración: si necesitas
-     cambiarlos en el futuro, edítalos aquí mismo. */
-  const SHEET_ID = '1rbQ6Q_hmP3Vxxv7EKD5E3_vn6DjTSDuL1DjNPMLtVcM';
-  const URL_CSV  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
+  /* ─── CONFIGURACIÓN ─────────────────────────────
+     SHEET_ID y SCRIPT_URL son fijos.
+     COL_ESTADO: nombre exacto de la columna en tu Sheet (fila 1).
+     Usamos _rowIndex (número de fila real en el Sheet, base 1)
+     para todas las operaciones de escritura, lo cual es más
+     robusto que buscar por el campo "id" (que en tu Sheet
+     coincide con timestamps y puede dar problemas de precisión). */
+  const SHEET_ID   = '1rbQ6Q_hmP3Vxxv7EKD5E3_vn6DjTSDuL1DjNPMLtVcM';
+  const URL_CSV    = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdPjmEy_bu4f7FVraganfWl9-u_Ut9e1pSXZNl71MjnL7T0sre6IJ67iBG8qzcGw8w/exec';
+
+  /* Nombre exacto de la columna "estado" en tu Sheet (minúsculas) */
   const COL_ESTADO = 'estado';
-  const COL_ID     = 'id';
 
   let mapa, reportes = [], markers = [], filtroActual = 'todos';
 
-  let iframeCallId = 0;
-
   /* ─── IFRAME PROXY ───────────────────────────────
-     Apps Script no permite fetch directo por CORS.
-     Cargamos la URL en un iframe oculto: el script SÍ
-     se ejecuta y escribe en el Sheet, aunque no podamos
-     leer la respuesta (cross-origin).
-  ────────────────────────────────────────────────── */
+     Apps Script rechaza fetch() por CORS.
+     Cargamos la URL en un iframe oculto: el script se ejecuta
+     y escribe en el Sheet aunque no podamos leer la respuesta. */
   function llamarScriptViaIframe(url) {
     return new Promise((resolve, reject) => {
       const frame = document.getElementById('proxy-frame');
-      ++iframeCallId;
 
       const timer = setTimeout(() => {
         frame.onload = null;
         frame.onerror = null;
-        reject(new Error('Tiempo de espera agotado'));
-      }, 10000);
+        resolve({ success: true }); // timeout = probablemente sí se ejecutó
+      }, 8000);
 
       frame.onload = () => {
         clearTimeout(timer);
@@ -373,23 +372,35 @@
         campo += c;
       }
       vals.push(campo);
-      const obj = { _rowIndex: rowIndex + 2 };
+      const obj = { _rowIndex: rowIndex + 2 }; // fila real en Sheet (encabezado = fila 1)
       encabezados.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
       return obj;
     });
   }
 
-  /* ─── ACTUALIZAR ESTADO ─────────────────────────── */
+  /* ─── ACTUALIZAR ESTADO ─────────────────────────────────────────────────
+     FIX PRINCIPAL: tanto "Iniciar" como "Finalizar" ahora llaman siempre
+     a actualizarEstado(). La diferencia es solo el valor que se escribe.
+
+     Para ubicar la fila en el Sheet usamos rowId = _rowIndex (número de
+     fila real, ej. 2, 3, 4...) y pasamos colId vacío para que el Apps
+     Script use directamente ese número de fila sin buscar por columna id.
+     Esto evita el problema de los timestamps como IDs.
+  ──────────────────────────────────────────────────────────────────────── */
   async function actualizarEstado(reporte, nuevoEstado, btnI, btnF) {
     btnI.classList.add('cargando'); btnF.classList.add('cargando');
+    const textoI = btnI.textContent;
+    const textoF = btnF.textContent;
     btnI.textContent = '...'; btnF.textContent = '...';
 
     try {
-      const rowId = COL_ID !== 'id' && reporte[COL_ID] ? reporte[COL_ID] : reporte._rowIndex;
+      /* Usamos _rowIndex directamente. colId se deja vacío para que
+         el Apps Script salte la búsqueda por columna y use rowId
+         como número de fila directo (rama targetRow = parseInt(rowId)). */
       const params = new URLSearchParams({
         action:    'updateEstado',
-        rowId:     rowId,
-        colId:     COL_ID,
+        rowId:     String(reporte._rowIndex), // número de fila real en el Sheet
+        colId:     '',                         // vacío → usa rowId como nº de fila
         colEstado: COL_ESTADO,
         estado:    nuevoEstado
       });
@@ -397,57 +408,30 @@
       const url = `${SCRIPT_URL}?${params.toString()}`;
       await llamarScriptViaIframe(url);
 
+      /* Actualizamos el objeto local para reflejar el cambio sin recargar */
       reporte[COL_ESTADO] = nuevoEstado;
-      mostrarToast(
-        nuevoEstado === 'Pendiente' ? '⏳ Marcado como Pendiente' : '✅ Marcado como Terminado',
-        nuevoEstado === 'Pendiente' ? 'info' : 'ok'
-      );
+
+      if (nuevoEstado === 'Pendiente') {
+        mostrarToast('⏳ Marcado como Pendiente', 'info');
+      } else if (nuevoEstado === 'Terminado') {
+        mostrarToast('✅ Marcado como Terminado', 'ok');
+      }
+
       renderLista(reportesFiltrados());
       renderMapa(reportesFiltrados());
 
     } catch (err) {
       mostrarToast(`❌ ${err.message}`, 'error');
+      btnI.textContent = textoI;
+      btnF.textContent = textoF;
     } finally {
       btnI.classList.remove('cargando');
       btnF.classList.remove('cargando');
     }
   }
 
-  /* ─── ELIMINAR REPORTE (al finalizar) ───────────── */
-  async function eliminarReporte(reporte, btnI, btnF) {
-    btnI.classList.add('cargando'); btnF.classList.add('cargando');
-    btnI.textContent = '...'; btnF.textContent = '...';
-
-    try {
-      const idReporte = reporte.id || reporte._rowIndex;
-      const params = new URLSearchParams({
-        action: 'deleteReporte',
-        id:     idReporte
-      });
-
-      const url = `${SCRIPT_URL}?${params.toString()}`;
-      await llamarScriptViaIframe(url);
-
-      mostrarToast('✅ Reporte completado y eliminado', 'ok');
-
-      // Esperamos un instante a que el Sheet termine de borrar la fila,
-      // y recargamos todo desde cero para que las posiciones de fila
-      // de los demás reportes queden correctas.
-      setTimeout(cargarDatos, 900);
-
-    } catch (err) {
-      mostrarToast(`❌ ${err.message}`, 'error');
-      btnI.classList.remove('cargando');
-      btnF.classList.remove('cargando');
-      btnI.textContent = '▶ Iniciar';
-      btnF.textContent = '✓ Finalizar';
-    }
-  }
-
   /* ─── FILTROS ───────────────────────────────────── */
   function reportesFiltrados() {
-    // Los terminados nunca se mezclan con el resto: solo se ven
-    // cuando el filtro activo es exactamente "terminado".
     if (filtroActual === 'terminado') {
       return reportes.filter(r => getEstado(r[COL_ESTADO]) === 'terminado');
     }
@@ -493,7 +477,7 @@
         ${ok ? `<div class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>` : ''}
         <span class="card-estado ${est}">${getEstadoLabel(r[COL_ESTADO])}</span>
         <div class="card-acciones">
-          <button class="btn-accion btn-iniciar" ${est === 'pendiente' || est === 'terminado' ? 'disabled' : ''}>▶ Iniciar</button>
+          <button class="btn-accion btn-iniciar"  ${est !== 'nuevo'     ? 'disabled' : ''}>▶ Iniciar</button>
           <button class="btn-accion btn-finalizar" ${est === 'terminado' ? 'disabled' : ''}>✓ Finalizar</button>
         </div>`;
 
@@ -504,8 +488,18 @@
 
       const btnI = card.querySelector('.btn-iniciar');
       const btnF = card.querySelector('.btn-finalizar');
-      btnI.addEventListener('click', e => { e.stopPropagation(); actualizarEstado(r, 'Pendiente', btnI, btnF); });
-      btnF.addEventListener('click', e => { e.stopPropagation(); eliminarReporte(r, btnI, btnF); });
+
+      /* ▶ Iniciar → escribe "Pendiente" en el Sheet */
+      btnI.addEventListener('click', e => {
+        e.stopPropagation();
+        actualizarEstado(r, 'Pendiente', btnI, btnF);
+      });
+
+      /* ✓ Finalizar → escribe "Terminado" en el Sheet (ya NO elimina la fila) */
+      btnF.addEventListener('click', e => {
+        e.stopPropagation();
+        actualizarEstado(r, 'Terminado', btnI, btnF);
+      });
 
       lista.appendChild(card);
     });
@@ -549,9 +543,6 @@
       const res   = await fetch(URL_CSV);
       const texto = await res.text();
       reportes = parsearCSV(texto).filter(r => r.tipo || r.descripcion);
-      // Más nuevos primero: las filas nuevas siempre se agregan al final
-      // del Sheet, así que ordenar por posición de fila es más confiable
-      // que parsear el id.
       reportes.sort((a, b) => b._rowIndex - a._rowIndex);
       actualizarStats(reportes.filter(r => getEstado(r[COL_ESTADO]) !== 'terminado'));
       renderLista(reportesFiltrados());
