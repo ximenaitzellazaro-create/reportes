@@ -95,6 +95,22 @@
   .card-desc{font-size:13px;color:var(--text-dim);line-height:1.45;margin-bottom:10px;}
   .card-coords{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9aa5b4;margin-bottom:12px;}
 
+  .card-estado-mini{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;margin:6px 0 0;}
+  .card-estado-mini::before{content:'';width:8px;height:8px;border-radius:50%;}
+  .card-estado-mini.nuevo{color:var(--text-dim);}
+  .card-estado-mini.nuevo::before{background:var(--nuevo);}
+  .card-estado-mini.pendiente{color:var(--pendiente);}
+  .card-estado-mini.pendiente::before{background:var(--pendiente);}
+  .card-estado-mini.terminado{color:var(--terminado);}
+  .card-estado-mini.terminado::before{background:var(--terminado);}
+
+  .card-details{margin-top:10px;}
+  .btn-ver-mapa{
+    display:none;width:100%;margin-top:10px;background:var(--primary-dim);color:var(--primary);
+    border:none;border-radius:10px;padding:9px;font-size:12.5px;font-weight:700;
+  }
+  .toggle-hint{display:none;font-size:11px;color:var(--primary);font-weight:700;margin-top:4px;}
+
   /* ─── STEPPER DE ESTADO ──────────────────────── */
   .stepper{display:flex;align-items:center;gap:0;margin-top:2px;}
   .step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative;}
@@ -144,15 +160,29 @@
       padding:12px 16px;overflow-x:visible;
     }
     .stat-chip{min-width:0;}
-    .main{display:block;height:auto;}
-    .sidebar{width:100%;min-width:0;height:auto;border-right:none;border-bottom:1px solid var(--border);}
+    .main{display:flex;flex-direction:column;height:auto;}
+    #map{
+      order:-1;position:sticky;top:0;z-index:5;
+      width:100%;height:280px;
+      border-bottom:3px solid var(--primary);
+      box-shadow:0 6px 14px rgba(0,0,0,.12);
+    }
+    .sidebar{order:2;width:100%;min-width:0;height:auto;border-right:none;border-bottom:1px solid var(--border);}
     .lista{overflow-y:visible;max-height:none;}
-    #map{width:100%;height:340px;}
+
+    /* tarjetas comprimidas por defecto: solo se ve tipo + prioridad + estado */
+    .card-details{display:none;}
+    .reporte-card.open .card-details{display:block;}
+    .toggle-hint{display:block;}
+    .reporte-card.open .toggle-hint{display:none;}
+    .reporte-card.open .toggle-hint-close{display:block !important;}
+    .btn-ver-mapa{display:block;}
   }
   @media (max-width:420px){
     .stats-bar{grid-template-columns:1fr 1fr;}
     .logo-text{font-size:17px;}
     .subtitle{font-size:11.5px;}
+    #map{height:240px;}
   }
   @media (prefers-reduced-motion:reduce){*{animation-duration:.001s !important;transition-duration:.001s !important;}}
 </style>
@@ -315,6 +345,8 @@
       const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
       const ok = !isNaN(lat) && !isNaN(lng);
 
+      const etiquetasMini = { nuevo:'Sin iniciar', pendiente:'En proceso', terminado:'Terminado' };
+
       const card = document.createElement('div');
       card.className = 'reporte-card';
       card.innerHTML = `
@@ -322,13 +354,33 @@
           <div class="card-tipo">${r.tipo || 'Sin tipo'}</div>
           <span class="card-prioridad ${p}">${r.prioridad || 'Baja'}</span>
         </div>
-        <div class="card-desc">${r.descripcion || 'Sin descripción'}</div>
-        ${ok ? `<div class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>` : ''}
-        ${renderStepper(est)}
+        <span class="card-estado-mini ${est}">${etiquetasMini[est]}</span>
+        <div class="toggle-hint">Tocar para ver detalles ▾</div>
+        <div class="toggle-hint toggle-hint-close" style="display:none;">Tocar para ocultar ▴</div>
+        <div class="card-details">
+          <div class="card-desc">${r.descripcion || 'Sin descripción'}</div>
+          ${ok ? `<div class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>` : ''}
+          ${renderStepper(est)}
+        </div>
+        <button class="btn-ver-mapa" type="button">📍 Ver en el mapa</button>
       `;
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.btn-ver-mapa')) return;
+        card.classList.toggle('open');
         if (ok) { const idx = reportes.indexOf(r); mapa.setView([lat, lng], 16); markers[idx]?.openPopup(); }
-        else mostrarToast('Este reporte no tiene coordenadas registradas');
+        else if (!ok) mostrarToast('Este reporte no tiene coordenadas registradas');
+      });
+      const btnMapa = card.querySelector('.btn-ver-mapa');
+      btnMapa.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (ok) {
+          const idx = reportes.indexOf(r);
+          mapa.setView([lat, lng], 16);
+          markers[idx]?.openPopup();
+          document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          mostrarToast('Este reporte no tiene coordenadas registradas');
+        }
       });
       lista.appendChild(card);
     });
