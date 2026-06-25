@@ -3,450 +3,553 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Salva Ciudadana — Consulta de Reportes</title>
-<meta name="description" content="Consulta pública del estado de los reportes ciudadanos: nuevos, en proceso y terminados.">
-<meta name="theme-color" content="#ffffff">
-<meta name="color-scheme" content="light only">
+<title>Salva Ciudadana — Reportes</title>
+<meta name="theme-color" content="#0f172a">
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-  :root{
-    --bg:#f6f8fb;
-    --panel:#ffffff;
-    --border:#e2e8f0;
-    --text:#1a2332;
-    --text-dim:#6b7686;
-    --primary:#2f6fed;
-    --primary-dim:#e7eefd;
-    --alta:#e0473e;
-    --media:#e0a020;
-    --baja:#2f9e6e;
-    --nuevo:#94a3b8;
-    --pendiente:#e0a020;
-    --terminado:#2f9e6e;
-    --radius:16px;
-    font-size:16px;
+  :root {
+    --ink:     #0f172a;
+    --ink-dim: #64748b;
+    --paper:   #ffffff;
+    --surface: #f8fafc;
+    --border:  #e2e8f0;
+    --accent:  #2563eb;
+    --accent-soft: #eff6ff;
+    --alta:    #dc2626;
+    --media:   #d97706;
+    --baja:    #16a34a;
+    --r:       12px;
+    --shadow:  0 4px 24px rgba(15,23,42,.10);
+    --shadow-lg: 0 12px 40px rgba(15,23,42,.18);
   }
-  *{box-sizing:border-box;}
-  html{color-scheme:light only;}
-  html,body{margin:0;padding:0;height:100%;}
-  body{
-    background:var(--bg);color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    overflow:hidden;
-    -webkit-text-size-adjust:100%;
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { color-scheme: light; font-size: 16px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--ink);
+    color: var(--ink);
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
   }
-  .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
-  :focus-visible{outline:3px solid var(--primary);outline-offset:2px;}
+  button { cursor: pointer; font-family: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
-  /* ─── HEADER ─────────────────────────────────── */
-  header{
-    padding:18px 26px;background:var(--panel);border-bottom:1px solid var(--border);
-    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  /* ── MAP (full viewport base) ─────────────────── */
+  #map {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
   }
-  .logo{display:flex;align-items:center;gap:12px;}
-  .logo-icon{
-    width:40px;height:40px;border-radius:12px;background:var(--primary-dim);
-    display:flex;align-items:center;justify-content:center;font-size:19px;
+
+  /* ── HEADER PILL ──────────────────────────────── */
+  #header {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 10px 18px 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: var(--shadow-lg);
+    white-space: nowrap;
+    max-width: calc(100vw - 32px);
   }
-  .logo-text{font-size:19px;font-weight:800;}
-  .logo-text span{color:var(--primary);}
-  .subtitle{font-size:12.5px;color:var(--text-dim);margin-top:1px;}
-  .header-right button{
-    background:var(--primary);color:#fff;border:none;border-radius:10px;
-    padding:9px 16px;font-size:13.5px;font-weight:700;
+  .logo-badge {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex: none;
   }
-  .header-right button:hover{background:#2559c4;}
-
-  /* ─── STATS BAR ──────────────────────────────── */
-  .stats-bar{
-    display:flex;gap:10px;padding:14px 26px;background:var(--panel);
-    border-bottom:1px solid var(--border);overflow-x:auto;
+  .logo-name { font-size: 14px; font-weight: 800; color: var(--ink); }
+  .logo-name span { color: var(--accent); }
+  #btn-refresh {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-dim);
+    transition: background .15s;
+    margin-left: 4px;
   }
-  .stat-chip{
-    flex:1;min-width:110px;background:var(--bg);border:1px solid var(--border);
-    border-radius:var(--radius);padding:10px 14px;display:flex;align-items:center;gap:10px;
+  #btn-refresh:hover { background: var(--border); }
+
+  /* ── STATS ROW ────────────────────────────────── */
+  #stats {
+    position: fixed;
+    top: 76px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+    display: flex;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
   }
-  .stat-dot{width:10px;height:10px;border-radius:50%;flex:none;}
-  .stat-dot.nuevo{background:var(--nuevo);}
-  .stat-dot.pendiente{background:var(--pendiente);}
-  .stat-dot.terminado{background:var(--terminado);}
-  .stat-dot.total{background:var(--primary);}
-  .stat-num{font-size:18px;font-weight:800;line-height:1;}
-  .stat-label{font-size:11px;color:var(--text-dim);font-weight:600;}
-
-  /* ─── LAYOUT ─────────────────────────────────── */
-  .main{display:flex;height:calc(100vh - 132px);}
-  .sidebar{width:420px;min-width:320px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
-  .filtros{display:flex;flex-wrap:wrap;gap:7px;padding:14px 18px;border-bottom:1px solid var(--border);}
-  .filtro-btn{background:var(--bg);border:1px solid var(--border);color:var(--text-dim);border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:600;transition:all .15s;}
-  .filtro-btn:hover{border-color:var(--primary);color:var(--text);}
-  .filtro-btn.active{background:var(--primary);border-color:var(--primary);color:#fff;}
-
-  .lista{flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:12px;}
-  .reporte-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;cursor:pointer;transition:box-shadow .15s,border-color .15s;}
-  .reporte-card:hover{border-color:var(--primary);box-shadow:0 4px 14px rgba(47,111,237,.10);}
-  .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;}
-  .card-tipo{font-size:14.5px;font-weight:700;}
-  .card-prioridad{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap;}
-  .card-prioridad.alta{background:#fdebe9;color:var(--alta);}
-  .card-prioridad.media{background:#fdf3dc;color:var(--media);}
-  .card-prioridad.baja{background:#e3f6ec;color:var(--baja);}
-  .card-desc{font-size:13px;color:var(--text-dim);line-height:1.45;margin-bottom:10px;}
-  .card-coords{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#9aa5b4;margin-bottom:12px;}
-
-  .card-estado-mini{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;margin:6px 0 0;}
-  .card-estado-mini::before{content:'';width:8px;height:8px;border-radius:50%;}
-  .card-estado-mini.nuevo{color:var(--text-dim);}
-  .card-estado-mini.nuevo::before{background:var(--nuevo);}
-  .card-estado-mini.pendiente{color:var(--pendiente);}
-  .card-estado-mini.pendiente::before{background:var(--pendiente);}
-  .card-estado-mini.terminado{color:var(--terminado);}
-  .card-estado-mini.terminado::before{background:var(--terminado);}
-
-  .card-details{margin-top:10px;}
-  .btn-ver-mapa{
-    display:none;width:100%;margin-top:10px;background:var(--primary-dim);color:var(--primary);
-    border:none;border-radius:10px;padding:9px;font-size:12.5px;font-weight:700;
+  .stat-pill {
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 6px 13px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
   }
-  .toggle-hint{display:none;font-size:11px;color:var(--primary);font-weight:700;margin-top:4px;}
+  .stat-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .stat-pill .num { font-size: 15px; font-weight: 900; }
 
-  /* ─── STEPPER DE ESTADO ──────────────────────── */
-  .stepper{display:flex;align-items:center;gap:0;margin-top:2px;}
-  .step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative;}
-  .step-dot{width:18px;height:18px;border-radius:50%;background:var(--border);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;z-index:1;}
-  .step-label{font-size:9.5px;color:var(--text-dim);font-weight:700;margin-top:5px;text-transform:uppercase;letter-spacing:.3px;}
-  .step-line{position:absolute;top:9px;left:50%;width:100%;height:2px;background:var(--border);z-index:0;}
-  .step:last-child .step-line{display:none;}
-  .step.done .step-dot{background:var(--terminado);border-color:var(--terminado);}
-  .step.done .step-line{background:var(--terminado);}
-  .step.current .step-dot{background:var(--pendiente);border-color:var(--pendiente);box-shadow:0 0 0 4px rgba(224,160,32,.18);}
-  .step.current .step-label{color:var(--pendiente);}
-  .step.done .step-label{color:var(--terminado);}
-
-  .empty-state{text-align:center;padding:60px 16px;color:var(--text-dim);}
-  .empty-state .icon{font-size:32px;margin-bottom:8px;}
-
-  /* ─── MAPA ───────────────────────────────────── */
-  #map{flex:1;}
-  .leaflet-popup-content-wrapper{border-radius:14px;}
-  .popup-tipo{font-weight:800;font-size:14px;margin-bottom:6px;}
-  .popup-row{font-size:12.5px;color:var(--text-dim);margin-bottom:3px;}
-  .popup-tag{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-right:6px;display:inline-block;}
-
-  #toast{
-    position:fixed;bottom:24px;left:50%;transform:translate(-50%,16px);
-    background:var(--text);color:#fff;padding:11px 20px;border-radius:30px;
-    font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;
-    transition:opacity .2s,transform .2s;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:200;
+  /* ── PANEL (bottom sheet) ─────────────────────── */
+  #panel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    max-height: 60dvh;
+    transition: max-height .35s cubic-bezier(.4,0,.2,1);
   }
-  #toast.show{opacity:1;transform:translate(-50%,0);}
+  #panel.collapsed { max-height: 64px; }
 
-  #loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:999;}
-  .spinner{width:32px;height:32px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--primary);animation:spin .8s linear infinite;}
-  @keyframes spin{to{transform:rotate(360deg);}}
-  #loading p{color:var(--text-dim);font-size:13.5px;}
-
-  @media (max-width:520px){
-    header{flex-direction:column;align-items:flex-start;}
-    .header-right{width:100%;}
+  #panel-header {
+    background: var(--paper);
+    border-radius: var(--r) var(--r) 0 0;
+    padding: 0 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 64px;
+    box-shadow: 0 -2px 12px rgba(15,23,42,.08);
+    flex: none;
+    cursor: pointer;
+    user-select: none;
   }
-  @media (max-width:880px){
-    html,body{height:auto;overflow:auto;}
-    header{padding:16px 18px;}
-    .header-right button{width:100%;}
-    .stats-bar{
-      display:grid;grid-template-columns:1fr 1fr;gap:8px;
-      padding:12px 16px;overflow-x:visible;
+  .drag-handle {
+    width: 36px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    position: absolute;
+    top: 10px; left: 50%; transform: translateX(-50%);
+  }
+  #panel-title {
+    font-size: 14px; font-weight: 800;
+    flex: 1;
+    color: var(--ink);
+  }
+  #panel-count {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  #chevron {
+    font-size: 18px;
+    color: var(--ink-dim);
+    transition: transform .3s;
+    line-height: 1;
+  }
+  #panel.collapsed #chevron { transform: rotate(180deg); }
+
+  /* Filtros */
+  #filtros {
+    background: var(--paper);
+    border-top: 1px solid var(--border);
+    padding: 10px 18px;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    flex: none;
+    scrollbar-width: none;
+  }
+  #filtros::-webkit-scrollbar { display: none; }
+  .f-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 13px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink-dim);
+    white-space: nowrap;
+    transition: all .15s;
+  }
+  .f-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* Lista */
+  #lista {
+    background: var(--surface);
+    overflow-y: auto;
+    flex: 1;
+    padding: 12px 16px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: box-shadow .15s, border-color .15s;
+    position: relative;
+  }
+  .card:hover, .card.active { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.10); }
+  .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .card-tipo { font-size: 14px; font-weight: 800; line-height: 1.3; }
+  .pri-badge {
+    font-size: 10px; font-weight: 800;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex: none;
+  }
+  .pri-alta  { background: #fef2f2; color: var(--alta); }
+  .pri-media { background: #fffbeb; color: var(--media); }
+  .pri-baja  { background: #f0fdf4; color: var(--baja); }
+  .card-desc { font-size: 12.5px; color: var(--ink-dim); margin-top: 6px; line-height: 1.4; }
+  .card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .estado-dot {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700;
+  }
+  .estado-dot::before { content:''; width:7px; height:7px; border-radius:50%; }
+  .estado-dot.nuevo   { color: #94a3b8; } .estado-dot.nuevo::before   { background:#94a3b8; }
+  .estado-dot.pendiente { color: var(--media); } .estado-dot.pendiente::before { background: var(--media); }
+  .estado-dot.terminado { color: var(--baja); } .estado-dot.terminado::before { background: var(--baja); }
+  .card-coords { font-family: ui-monospace, monospace; font-size: 10.5px; color: #b0bac4; }
+
+  /* Stepper */
+  .stepper { display: flex; align-items: flex-start; margin-top: 12px; }
+  .step { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
+  .step-line { position: absolute; top: 9px; left: 50%; width: 100%; height: 2px; background: var(--border); z-index: 0; }
+  .step:last-child .step-line { display: none; }
+  .step-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--border); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; z-index: 1; }
+  .step-lbl { font-size: 9px; font-weight: 700; color: var(--ink-dim); margin-top: 4px; text-transform: uppercase; text-align: center; }
+  .step.done .step-dot { background: var(--baja); border-color: var(--baja); }
+  .step.done .step-line { background: var(--baja); }
+  .step.done .step-lbl { color: var(--baja); }
+  .step.cur .step-dot { background: var(--media); border-color: var(--media); box-shadow: 0 0 0 4px rgba(217,119,6,.15); }
+  .step.cur .step-lbl { color: var(--media); }
+
+  .empty { text-align: center; padding: 40px 16px; color: var(--ink-dim); font-size: 13px; }
+  .empty .ico { font-size: 28px; margin-bottom: 8px; }
+
+  /* ── DESKTOP override (≥ 768px) ───────────────── */
+  @media (min-width: 768px) {
+    body { overflow: hidden; }
+    #panel {
+      top: 0; bottom: 0;
+      left: 0; right: auto;
+      width: 380px;
+      max-height: 100dvh;
+      border-radius: 0;
+      flex-direction: column;
+      box-shadow: var(--shadow-lg);
     }
-    .stat-chip{min-width:0;}
-    .main{display:flex;flex-direction:column;height:auto;}
-    #map{
-      order:-1;
-      width:100%;height:320px;
-      border-bottom:3px solid var(--primary);
-      box-shadow:0 6px 14px rgba(0,0,0,.12);
+    #panel.collapsed { max-height: 100dvh; width: 64px; }
+    #panel-header {
+      border-radius: 0;
+      flex-direction: column;
+      height: auto;
+      padding: 20px 16px 14px;
+      gap: 8px;
+      cursor: default;
     }
-    .sidebar{order:2;width:100%;min-width:0;height:auto;border-right:none;border-bottom:1px solid var(--border);}
-    .lista{overflow-y:visible;max-height:none;}
+    #panel.collapsed #panel-header { cursor: pointer; padding: 20px 8px; }
+    .drag-handle { display: none; }
+    #chevron { transform: rotate(-90deg) !important; font-size: 15px; }
+    #panel.collapsed #chevron { transform: rotate(90deg) !important; }
+    #panel-title { font-size: 15px; }
+    #panel.collapsed #panel-title,
+    #panel.collapsed #panel-count,
+    #panel.collapsed #filtros,
+    #panel.collapsed #lista { display: none; }
+    #filtros { flex-wrap: wrap; gap: 6px; }
+    #header { left: 50%; transform: translateX(calc(-50% + 190px)); }
+    #panel.collapsed ~ #header,
+    #panel.collapsed ~ #stats { left: 50%; transform: translateX(calc(-50% + 32px)); }
+    #stats { top: 76px; left: 50%; transform: translateX(calc(-50% + 190px)); }
+  }
 
-    /* tarjetas comprimidas por defecto: solo se ve tipo + prioridad + estado */
-    .card-details{display:none;}
-    .reporte-card.open .card-details{display:block;}
-    .toggle-hint{display:block;}
-    .reporte-card.open .toggle-hint{display:none;}
-    .reporte-card.open .toggle-hint-close{display:block !important;}
-    .btn-ver-mapa{display:block;}
+  @media (min-width: 1100px) {
+    #panel { width: 420px; }
+    #header { transform: translateX(calc(-50% + 210px)); }
+    #stats  { transform: translateX(calc(-50% + 210px)); }
   }
-  @media (max-width:420px){
-    .stats-bar{grid-template-columns:1fr 1fr;}
-    .logo-text{font-size:17px;}
-    .subtitle{font-size:11.5px;}
-    #map{height:260px;}
+
+  /* ── TOAST ────────────────────────────────────── */
+  #toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(8px);
+    background: var(--ink); color: #fff;
+    padding: 10px 20px; border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    box-shadow: var(--shadow-lg);
+    z-index: 100; white-space: nowrap;
   }
-  @media (prefers-reduced-motion:reduce){*{animation-duration:.001s !important;transition-duration:.001s !important;}}
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── LOADING ──────────────────────────────────── */
+  #loading {
+    position: fixed; inset: 0; background: #0f172a;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; z-index: 200;
+    transition: opacity .4s;
+  }
+  #loading.hide { opacity: 0; pointer-events: none; }
+  .spin { width: 36px; height: 36px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--accent); animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: rgba(255,255,255,.5); font-size: 13px; }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001s!important; transition-duration:.001s!important; } }
 </style>
 </head>
 <body>
+<h1 class="sr-only">Salva Ciudadana — Consulta pública de reportes</h1>
 
-<h1 class="visually-hidden">Salva Ciudadana — Consulta pública de reportes</h1>
-
-<div id="loading"><div class="spinner" role="status" aria-label="Cargando"></div><p>Cargando reportes…</p></div>
+<div id="loading"><div class="spin"></div><p>Cargando reportes…</p></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="map"></div>
 
-<header>
-  <div class="logo">
-    <div class="logo-icon" aria-hidden="true">📋</div>
-    <div>
-      <div class="logo-text">Salva <span>Ciudadana</span></div>
-      <div class="subtitle">Consulta el estado de los reportes registrados</div>
-    </div>
-  </div>
-  <div class="header-right"><button onclick="cargarDatos()">↻ Actualizar</button></div>
+<!-- Header pill -->
+<header id="header">
+  <div class="logo-badge">📋</div>
+  <div class="logo-name">Salva <span>Ciudadana</span></div>
+  <button id="btn-refresh" onclick="cargarDatos()">↻ Actualizar</button>
 </header>
 
-<div class="stats-bar">
-  <div class="stat-chip"><div class="stat-dot total"></div><div><div class="stat-num" id="cnt-total">0</div><div class="stat-label">Total</div></div></div>
-  <div class="stat-chip"><div class="stat-dot nuevo"></div><div><div class="stat-num" id="cnt-nuevo">0</div><div class="stat-label">Sin iniciar</div></div></div>
-  <div class="stat-chip"><div class="stat-dot pendiente"></div><div><div class="stat-num" id="cnt-pendiente">0</div><div class="stat-label">En proceso</div></div></div>
-  <div class="stat-chip"><div class="stat-dot terminado"></div><div><div class="stat-num" id="cnt-terminado">0</div><div class="stat-label">Terminados</div></div></div>
+<!-- Stats -->
+<div id="stats">
+  <div class="stat-pill"><div class="stat-dot" style="background:#94a3b8"></div><span class="num" id="cnt-nuevo">0</span> Sin iniciar</div>
+  <div class="stat-pill"><div class="stat-dot" style="background:#d97706"></div><span class="num" id="cnt-pendiente">0</span> En proceso</div>
+  <div class="stat-pill"><div class="stat-dot" style="background:#16a34a"></div><span class="num" id="cnt-terminado">0</span> Terminados</div>
 </div>
 
-<main class="main">
-  <nav class="sidebar" aria-label="Lista de reportes">
-    <div class="filtros">
-      <button class="filtro-btn active" onclick="filtrar('todos', this)">Todos</button>
-      <button class="filtro-btn" onclick="filtrar('nuevo', this)">⚪ Sin iniciar</button>
-      <button class="filtro-btn" onclick="filtrar('pendiente', this)">🟡 En proceso</button>
-      <button class="filtro-btn" onclick="filtrar('terminado', this)">🟢 Terminados</button>
+<!-- Side/bottom panel -->
+<aside id="panel" aria-label="Lista de reportes">
+  <div id="panel-header" onclick="togglePanel()">
+    <div class="drag-handle"></div>
+    <div style="display:flex;align-items:center;gap:10px;width:100%">
+      <div id="panel-title">Reportes</div>
+      <span id="panel-count">0</span>
+      <span id="chevron" aria-hidden="true">⌃</span>
     </div>
-    <div class="lista" id="lista"></div>
-  </nav>
-  <div id="map" role="region" aria-label="Mapa de reportes"></div>
-</main>
+  </div>
+  <div id="filtros">
+    <button class="f-btn active" onclick="filtrar('todos',this)">Todos</button>
+    <button class="f-btn" onclick="filtrar('nuevo',this)">⚪ Sin iniciar</button>
+    <button class="f-btn" onclick="filtrar('pendiente',this)">🟡 En proceso</button>
+    <button class="f-btn" onclick="filtrar('terminado',this)">🟢 Terminados</button>
+  </div>
+  <div id="lista"></div>
+</aside>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  /* Página de SOLO LECTURA: ningún botón escribe en el Sheet.
-     Solo se lee el CSV público — no se usa el Apps Script ni el iframe proxy. */
-  const SHEET_ID = '1rbQ6Q_hmP3Vxxv7EKD5E3_vn6DjTSDuL1DjNPMLtVcM';
-  const URL_CSV  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
-  const COL_ESTADO = 'estado';
+const SHEET_ID = '1rbQ6Q_hmP3Vxxv7EKD5E3_vn6DjTSDuL1DjNPMLtVcM';
+const URL_CSV  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
+const COL_ESTADO = 'estado';
 
-  let mapa, reportes = [], markers = [], filtroActual = 'todos';
+let mapa, reportes = [], markers = [], filtroActual = 'todos', panelOpen = true;
 
-  mapa = L.map('map', { zoomControl: false }).setView([20.5, -100.5], 10);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
-  }).addTo(mapa);
-  L.control.zoom({ position: 'bottomright' }).addTo(mapa);
+// Map
+mapa = L.map('map', { zoomControl: false }).setView([20.5, -100.5], 10);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19
+}).addTo(mapa);
+L.control.zoom({ position: 'bottomright' }).addTo(mapa);
 
-  function getPrioridad(p) {
-    if (!p) return 'baja';
-    p = p.toLowerCase();
-    if (p.includes('alta')) return 'alta';
-    if (p.includes('media')) return 'media';
-    return 'baja';
-  }
+// Panel toggle
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('panel').classList.toggle('collapsed', !panelOpen);
+  setTimeout(() => mapa.invalidateSize(), 350);
+}
 
-  function getEstado(e) {
-    if (!e) return 'nuevo';
-    e = e.toLowerCase().trim();
-    if (e.includes('terminado') || e.includes('completado') || e.includes('finalizado')) return 'terminado';
-    if (e.includes('pendiente') || e.includes('iniciado') || e.includes('proceso')) return 'pendiente';
-    return 'nuevo';
-  }
+function getPrioridad(p) {
+  if (!p) return 'baja'; p = p.toLowerCase();
+  return p.includes('alta') ? 'alta' : p.includes('media') ? 'media' : 'baja';
+}
+function getEstado(e) {
+  if (!e) return 'nuevo'; e = e.toLowerCase().trim();
+  if (e.includes('terminado')||e.includes('completado')||e.includes('finalizado')) return 'terminado';
+  if (e.includes('pendiente')||e.includes('iniciado')||e.includes('proceso')) return 'pendiente';
+  return 'nuevo';
+}
+function colorPri(p) { return p==='alta'?'#dc2626':p==='media'?'#d97706':'#16a34a'; }
 
-  function getColor(p) {
-    if (p === 'alta') return '#e0473e';
-    if (p === 'media') return '#e0a020';
-    return '#2f9e6e';
-  }
+function iconoMarker(estado) {
+  const c = {nuevo:'#94a3b8',pendiente:'#d97706',terminado:'#16a34a'}[estado]||'#94a3b8';
+  return L.divIcon({
+    html:`<div style="width:14px;height:14px;background:${c};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.25)"></div>`,
+    className:'', iconSize:[14,14], iconAnchor:[7,7]
+  });
+}
 
-  function crearIcono(estado) {
-    const colores = { nuevo:'#94a3b8', pendiente:'#e0a020', terminado:'#2f9e6e' };
-    const color = colores[estado] || '#94a3b8';
-    return L.divIcon({
-      html: `<div style="width:15px;height:15px;background:${color};border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3);"></div>`,
-      className: '', iconSize: [15, 15], iconAnchor: [8, 8]
-    });
-  }
+function stepper(estado) {
+  const pasos=[{k:'nuevo',l:'Recibido'},{k:'pendiente',l:'En proceso'},{k:'terminado',l:'Listo'}];
+  const ord={nuevo:0,pendiente:1,terminado:2};
+  const cur=ord[estado]??0;
+  return `<div class="stepper">${pasos.map((p,i)=>{
+    const cls=i<cur?'done':i===cur?'cur':'';
+    return `<div class="step ${cls}"><div class="step-line"></div><div class="step-dot">${i<cur?'✓':''}</div><div class="step-lbl">${p.l}</div></div>`;
+  }).join('')}</div>`;
+}
 
-  function renderStepper(estado) {
-    const pasos = [
-      { key:'nuevo',      label:'Recibido' },
-      { key:'pendiente',  label:'En proceso' },
-      { key:'terminado',  label:'Terminado' }
-    ];
-    const orden = { nuevo:0, pendiente:1, terminado:2 };
-    const actual = orden[estado] ?? 0;
-    return `<div class="stepper">${pasos.map((p, i) => {
-      let cls = '';
-      if (i < actual) cls = 'done';
-      else if (i === actual) cls = 'current';
-      const icon = i < actual ? '✓' : '';
-      return `<div class="step ${cls}">
-        <div class="step-line"></div>
-        <div class="step-dot">${icon}</div>
-        <div class="step-label">${p.label}</div>
-      </div>`;
-    }).join('')}</div>`;
-  }
+let toastT;
+function toast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show';
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),3000);
+}
 
-  let toastTimer;
-  function mostrarToast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.className = 'show';
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
-  }
-
-  function parsearCSV(texto) {
-    const lineas = texto.trim().split('\n');
-    const encabezados = lineas[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
-    return lineas.slice(1).map((linea, rowIndex) => {
-      const vals = [];
-      let dentro = false, campo = '';
-      for (let c of linea) {
-        if (c === '"') { dentro = !dentro; continue; }
-        if (c === ',' && !dentro) { vals.push(campo); campo = ''; continue; }
-        campo += c;
-      }
-      vals.push(campo);
-      const obj = { _rowIndex: rowIndex + 2 };
-      encabezados.forEach((h, i) => { obj[h] = (vals[i] || '').trim(); });
-      return obj;
-    });
-  }
-
-  function reportesFiltrados() {
-    if (filtroActual === 'todos') return reportes;
-    return reportes.filter(r => getEstado(r[COL_ESTADO]) === filtroActual);
-  }
-
-  function filtrar(tipo, btn) {
-    filtroActual = tipo;
-    document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    renderLista(reportesFiltrados());
-    renderMapa(reportesFiltrados());
-  }
-
-  function renderLista(datos) {
-    const lista = document.getElementById('lista');
-    if (!datos.length) {
-      lista.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No hay reportes en esta categoría</p></div>`;
-      return;
+function parsearCSV(txt) {
+  const lines=txt.trim().split('\n');
+  const heads=lines[0].split(',').map(h=>h.replace(/"/g,'').trim().toLowerCase());
+  return lines.slice(1).map((line,ri)=>{
+    const vals=[]; let inside=false, campo='';
+    for(const c of line){
+      if(c==='"'){inside=!inside;continue;}
+      if(c===','&&!inside){vals.push(campo);campo='';continue;}
+      campo+=c;
     }
-    lista.innerHTML = '';
-    datos.forEach(r => {
-      const p = getPrioridad(r.prioridad);
-      const est = getEstado(r[COL_ESTADO]);
-      const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
-      const ok = !isNaN(lat) && !isNaN(lng);
+    vals.push(campo);
+    const obj={_ri:ri+2};
+    heads.forEach((h,i)=>obj[h]=(vals[i]||'').trim());
+    return obj;
+  });
+}
 
-      const etiquetasMini = { nuevo:'Sin iniciar', pendiente:'En proceso', terminado:'Terminado' };
+function filtrados() {
+  return filtroActual==='todos'?reportes:reportes.filter(r=>getEstado(r[COL_ESTADO])===filtroActual);
+}
 
-      const card = document.createElement('div');
-      card.className = 'reporte-card';
-      card.innerHTML = `
-        <div class="card-top">
-          <div class="card-tipo">${r.tipo || 'Sin tipo'}</div>
-          <span class="card-prioridad ${p}">${r.prioridad || 'Baja'}</span>
-        </div>
-        <span class="card-estado-mini ${est}">${etiquetasMini[est]}</span>
-        <div class="toggle-hint">Tocar para ver detalles ▾</div>
-        <div class="toggle-hint toggle-hint-close" style="display:none;">Tocar para ocultar ▴</div>
-        <div class="card-details">
-          <div class="card-desc">${r.descripcion || 'Sin descripción'}</div>
-          ${ok ? `<div class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>` : ''}
-          ${renderStepper(est)}
-        </div>
-        <button class="btn-ver-mapa" type="button">📍 Ver en el mapa</button>
-      `;
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.btn-ver-mapa')) return;
-        card.classList.toggle('open');
-        if (ok) { const idx = reportes.indexOf(r); mapa.setView([lat, lng], 16); markers[idx]?.openPopup(); }
-        else if (!ok) mostrarToast('Este reporte no tiene coordenadas registradas');
-      });
-      const btnMapa = card.querySelector('.btn-ver-mapa');
-      btnMapa.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (ok) {
-          const idx = reportes.indexOf(r);
-          mapa.setView([lat, lng], 16);
-          markers[idx]?.openPopup();
-          document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else {
-          mostrarToast('Este reporte no tiene coordenadas registradas');
-        }
-      });
-      lista.appendChild(card);
+function filtrar(tipo, btn) {
+  filtroActual=tipo;
+  document.querySelectorAll('.f-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderLista(filtrados()); renderMapa(filtrados());
+}
+
+function renderLista(datos) {
+  const lista=document.getElementById('lista');
+  document.getElementById('panel-count').textContent=datos.length;
+  if(!datos.length){
+    lista.innerHTML=`<div class="empty"><div class="ico">📭</div><p>Sin reportes aquí</p></div>`;
+    return;
+  }
+  lista.innerHTML='';
+  const etq={nuevo:'Sin iniciar',pendiente:'En proceso',terminado:'Terminado'};
+  datos.forEach(r=>{
+    const p=getPrioridad(r.prioridad), est=getEstado(r[COL_ESTADO]);
+    const lat=parseFloat(r.latitud), lng=parseFloat(r.longitud), ok=!isNaN(lat)&&!isNaN(lng);
+    const card=document.createElement('div');
+    card.className='card';
+    card.innerHTML=`
+      <div class="card-row">
+        <div class="card-tipo">${r.tipo||'Sin tipo'}</div>
+        <span class="pri-badge pri-${p}">${r.prioridad||'Baja'}</span>
+      </div>
+      <div class="card-desc">${r.descripcion||'Sin descripción'}</div>
+      <div class="card-footer">
+        <span class="estado-dot ${est}">${etq[est]}</span>
+        ${ok?`<span class="card-coords">${lat.toFixed(4)}, ${lng.toFixed(4)}</span>`:''}
+      </div>
+      ${stepper(est)}`;
+    card.addEventListener('click',()=>{
+      document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
+      card.classList.add('active');
+      if(ok){
+        const idx=reportes.indexOf(r);
+        mapa.setView([lat,lng],16);
+        markers[idx]?.openPopup();
+        // On mobile, collapse panel to see map
+        if(window.innerWidth<768&&panelOpen) togglePanel();
+      } else toast('Este reporte no tiene coordenadas');
     });
+    lista.appendChild(card);
+  });
+}
+
+function renderMapa(datos) {
+  markers.forEach(m=>m&&mapa.removeLayer(m));
+  markers=[];
+  const bounds=[];
+  reportes.forEach(r=>{
+    const lat=parseFloat(r.latitud), lng=parseFloat(r.longitud);
+    if(isNaN(lat)||isNaN(lng)){markers.push(null);return;}
+    const p=getPrioridad(r.prioridad), est=getEstado(r[COL_ESTADO]);
+    const etq={nuevo:'Sin iniciar',pendiente:'En proceso',terminado:'Terminado'};
+    const m=L.marker([lat,lng],{icon:iconoMarker(est)});
+    m.bindPopup(`
+      <div class="popup-tipo" style="font-weight:800;font-size:14px;margin-bottom:6px">${r.tipo||'Sin tipo'}</div>
+      <div style="font-size:12.5px;color:#64748b;margin-bottom:3px"><strong>Descripción:</strong> ${r.descripcion||'—'}</div>
+      <div style="font-size:12.5px;color:#64748b;margin-bottom:8px"><strong>Coords:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
+      <span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:${colorPri(p)}1f;color:${colorPri(p)}">${r.prioridad||'Baja'}</span>
+      <span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:#f1f5f9;color:#475569;margin-left:4px">${etq[est]}</span>`);
+    if(datos.includes(r)){m.addTo(mapa);bounds.push([lat,lng]);}
+    markers.push(m);
+  });
+  if(bounds.length) mapa.fitBounds(bounds,{padding:[60,60]});
+}
+
+function actualizarStats() {
+  document.getElementById('cnt-nuevo').textContent    = reportes.filter(r=>getEstado(r[COL_ESTADO])==='nuevo').length;
+  document.getElementById('cnt-pendiente').textContent= reportes.filter(r=>getEstado(r[COL_ESTADO])==='pendiente').length;
+  document.getElementById('cnt-terminado').textContent= reportes.filter(r=>getEstado(r[COL_ESTADO])==='terminado').length;
+}
+
+async function cargarDatos() {
+  document.getElementById('btn-refresh').textContent='↻ …';
+  try {
+    const res=await fetch(URL_CSV);
+    const txt=await res.text();
+    reportes=parsearCSV(txt).filter(r=>r.tipo||r.descripcion);
+    reportes.sort((a,b)=>b._ri-a._ri);
+    actualizarStats();
+    renderLista(filtrados());
+    renderMapa(filtrados());
+    setTimeout(()=>mapa.invalidateSize(),100);
+  } catch(e) {
+    document.getElementById('lista').innerHTML=`<div class="empty"><div class="ico">⚠️</div><p>No se pudo cargar. Intenta de nuevo.</p></div>`;
+  } finally {
+    document.getElementById('btn-refresh').textContent='↻ Actualizar';
+    const ld=document.getElementById('loading');
+    ld.classList.add('hide');
+    setTimeout(()=>ld.style.display='none',400);
   }
+}
 
-  function renderMapa(datos) {
-    markers.forEach(m => m && mapa.removeLayer(m));
-    markers = [];
-    const bounds = [];
-    reportes.forEach(r => {
-      const lat = parseFloat(r.latitud), lng = parseFloat(r.longitud);
-      if (isNaN(lat) || isNaN(lng)) { markers.push(null); return; }
-      const p = getPrioridad(r.prioridad);
-      const est = getEstado(r[COL_ESTADO]);
-      const marker = L.marker([lat, lng], { icon: crearIcono(est) });
-      const etiquetas = { nuevo:'Sin iniciar', pendiente:'En proceso', terminado:'Terminado' };
-      marker.bindPopup(`
-        <div class="popup-tipo">${r.tipo || 'Sin tipo'}</div>
-        <div class="popup-row"><strong>Descripción:</strong> ${r.descripcion || '—'}</div>
-        <div class="popup-row"><strong>Coords:</strong> ${lat.toFixed(5)}, ${lng.toFixed(5)}</div>
-        <div style="margin-top:8px;">
-          <span class="popup-tag" style="background:${getColor(p)}1f;color:${getColor(p)}">${r.prioridad || 'Baja'}</span>
-          <span class="popup-tag" style="background:#eef2f7;color:#475569">${etiquetas[est]}</span>
-        </div>`);
-      if (datos.includes(r)) { marker.addTo(mapa); bounds.push([lat, lng]); }
-      markers.push(marker);
-    });
-    if (bounds.length) mapa.fitBounds(bounds, { padding: [40, 40] });
-  }
+function refrescarMapa(){ if(mapa) mapa.invalidateSize(); }
+window.addEventListener('load',()=>setTimeout(refrescarMapa,150));
+window.addEventListener('resize',refrescarMapa);
+window.addEventListener('orientationchange',()=>setTimeout(refrescarMapa,300));
 
-  function actualizarStats() {
-    document.getElementById('cnt-total').textContent      = reportes.length;
-    document.getElementById('cnt-nuevo').textContent      = reportes.filter(r => getEstado(r[COL_ESTADO]) === 'nuevo').length;
-    document.getElementById('cnt-pendiente').textContent  = reportes.filter(r => getEstado(r[COL_ESTADO]) === 'pendiente').length;
-    document.getElementById('cnt-terminado').textContent  = reportes.filter(r => getEstado(r[COL_ESTADO]) === 'terminado').length;
-  }
+setTimeout(()=>{const ld=document.getElementById('loading');if(ld){ld.classList.add('hide');setTimeout(()=>ld.style.display='none',400);}},6000);
 
-  async function cargarDatos() {
-    try {
-      const res = await fetch(URL_CSV);
-      const texto = await res.text();
-      reportes = parsearCSV(texto).filter(r => r.tipo || r.descripcion);
-      reportes.sort((a, b) => b._rowIndex - a._rowIndex);
-      actualizarStats();
-      renderLista(reportesFiltrados());
-      renderMapa(reportesFiltrados());
-      setTimeout(() => { if (mapa) mapa.invalidateSize(); }, 100);
-    } catch (e) {
-      document.getElementById('lista').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>No se pudo cargar la información. Intenta más tarde.</p></div>`;
-    } finally {
-      const ld = document.getElementById('loading');
-      if (ld) ld.style.display = 'none';
-    }
-  }
-
-  setTimeout(() => { const ld = document.getElementById('loading'); if (ld) ld.style.display = 'none'; }, 5000);
-
-  /* Leaflet necesita que se le diga explícitamente cuando su contenedor
-     cambia de tamaño u orden (ej. al reordenar con CSS en mobile),
-     si no, el mapa puede quedar con tamaño 0 y no pintarse. */
-  function refrescarMapa() { if (mapa) mapa.invalidateSize(); }
-  window.addEventListener('load', () => setTimeout(refrescarMapa, 150));
-  window.addEventListener('resize', refrescarMapa);
-  window.addEventListener('orientationchange', () => setTimeout(refrescarMapa, 200));
-
-  cargarDatos();
+cargarDatos();
 </script>
 </body>
 </html>
